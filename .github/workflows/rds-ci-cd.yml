@@ -33,7 +33,7 @@ jobs:
       - name: Build and Push Docker Image
         run: |
           docker build -t backend_rds:latest -f backend_rds/Dockerfile backend_rds
-          docker tag backend_rds:latest ${{ secrets.ECR_RDS }}:latest
+          docker tag backend_rds:latest ${{ secrets.ECR_RDS }}
           docker push ${{ secrets.ECR_RDS }}:latest
 
       - name: Install SSH Client
