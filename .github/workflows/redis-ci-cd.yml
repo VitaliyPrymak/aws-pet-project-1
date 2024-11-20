@@ -2,8 +2,8 @@ name: deploy backend_redis to ECR
 
 on:
   push:
-   branches:
-      - main 
+    branches:
+      - main
     paths:
       - 'backend_redis/**'
 
