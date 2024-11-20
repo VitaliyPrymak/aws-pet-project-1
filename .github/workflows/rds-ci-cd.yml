@@ -1,0 +1,60 @@
+name: deploy backend_rds to ECR
+
+on:
+  push:
+   branches:
+      - main 
+    paths:
+      - 'backend_rds/**'
+
+jobs:
+  deploy-rds-to-ECR:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Connect to ECR
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y awscli
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        run: |
+          aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+
+      - name: build and push
+        run: |
+          docker build -t backend_rds:latest -f backend_rds/Dockerfile backend_rds
+          docker tag backend_rds:latest ${{ secrets.ECR_RDS }}:latest
+          docker push ${{ secrets.ECR_RDS }}:latest
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y openssh-client
+
+      - name: Configure SSH key
+        env:
+            PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PRIVATE_KEY" | tr -d '\r' > ~/.ssh/ec2_private_key.pem
+          chmod 600 ~/.ssh/ec2_private_key.pem
+
+      - name: Add host key to known_hosts
+        run: ssh-keyscan ${{ secrets.ELASTIC_IP }} >> ~/.ssh/known_hosts
+
+      - name: Connect to EC2 and pull
+        run: |
+          ssh -o ConnectTimeout=10 -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << EOF
+          aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+          docker pull ${{ secrets.ECR_RDS }}:latest
+          docker-compose up -d backend_rds
+          EOF
