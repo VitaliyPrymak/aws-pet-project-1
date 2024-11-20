@@ -1,4 +1,5 @@
 name: AWS Frontend CI/CD Pipeline
+
 on:
   push:
     branches:
