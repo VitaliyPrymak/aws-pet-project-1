@@ -1,9 +1,7 @@
 name: deploy backend_rds to ECR
 
-on:
+on: # workflow_dispatch 
   push:
-    branches:
-      - main
     paths:
       - 'backend_rds/**'
 
