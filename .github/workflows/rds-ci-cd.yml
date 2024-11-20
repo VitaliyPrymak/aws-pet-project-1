@@ -14,7 +14,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Connect to ECR
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -29,32 +29,33 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+          aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | \
+          docker login --username AWS --password-stdin ${{ secrets.ECR_RDS }}
 
-      - name: build and push
+      - name: Build and Push Docker Image
         run: |
           docker build -t backend_rds:latest -f backend_rds/Dockerfile backend_rds
           docker tag backend_rds:latest ${{ secrets.ECR_RDS }}:latest
           docker push ${{ secrets.ECR_RDS }}:latest
 
-      - name: Install SSH client
+      - name: Install SSH Client
         run: sudo apt-get update && sudo apt-get install -y openssh-client
 
-      - name: Configure SSH key
+      - name: Configure SSH Key
         env:
-            PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
+          PRIVATE_KEY: ${{ secrets.EC2_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$PRIVATE_KEY" | tr -d '\r' > ~/.ssh/ec2_private_key.pem
           chmod 600 ~/.ssh/ec2_private_key.pem
 
-      - name: Add host key to known_hosts
-        run: ssh-keyscan ${{ secrets.ELASTIC_IP }} >> ~/.ssh/known_hosts
+      - name: Add Host Key to Known Hosts
+        run: ssh-keyscan -H ${{ secrets.ELASTIC_IP }} >> ~/.ssh/known_hosts
 
-      - name: Connect to EC2 and pull
+      - name: Deploy to EC2
         run: |
-          ssh -o ConnectTimeout=10 -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << EOF
-          aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
-          docker pull ${{ secrets.ECR_RDS }}:latest
-          docker-compose up -d backend_rds
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << 'EOF'
+          sudo docker login --username AWS --password $(aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }})
+          sudo docker pull ${{ secrets.ECR_RDS }}:latest
+          sudo docker-compose up -d backend_rds
           EOF
