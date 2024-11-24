@@ -66,7 +66,7 @@ jobs:
 
           # Підключаємося до сервера і виконуємо деплой
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << EOF
-            sudo docker login --username AWS --password \$(aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }})
-            sudo docker pull ${{ secrets.ECR_RDS }}:$SHORT_SHA
-            sudo docker-compose up -d backend_rds
+             docker login --username AWS --password \$(aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }})
+             docker pull ${{ secrets.ECR_RDS }}:$SHORT_SHA
+             docker-compose up -d backend_rds
           EOF
