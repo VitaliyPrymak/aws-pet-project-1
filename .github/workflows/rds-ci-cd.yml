@@ -2,6 +2,8 @@ name: deploy backend_rds to ECR
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'backend_rds/**'
 

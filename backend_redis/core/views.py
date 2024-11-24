@@ -25,3 +25,5 @@ def test_connection(request):
     except redis.RedisError as e:
         logger.error(f"Error connecting to Redis: {e}")
         return JsonResponse({'error': str(e)}, status=500)
+ 
+ 
