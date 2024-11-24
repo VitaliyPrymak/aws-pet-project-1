@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'backend_rds/**'
+      - "backend_rds/**"
 
 jobs:
   deploy-rds-to-ECR:
@@ -34,9 +34,10 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          docker build -t backend_rds:latest -f backend_rds/Dockerfile backend_rds
-          docker tag backend_rds:latest ${{ secrets.ECR_RDS }}
-          docker push ${{ secrets.ECR_RDS }}:latest
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          docker build -t backend_rds:$SHORT_SHA -f backend_rds/Dockerfile backend_rds
+          docker tag backend_rds:$SHORT_SHA ${{ secrets.ECR_RDS }}:$SHORT_SHA
+          docker push ${{ secrets.ECR_RDS }}:$SHORT_SHA
 
       - name: Install SSH Client
         run: sudo apt-get update && sudo apt-get install -y openssh-client
@@ -52,13 +53,20 @@ jobs:
       - name: Add Host Key to Known Hosts
         run: ssh-keyscan -H ${{ secrets.ELASTIC_IP }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to EC2
+      - name: Update Docker Compose and Deploy
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << 'EOF'
-          sudo docker login --username AWS --password $(aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }})
-          sudo docker pull ${{ secrets.ECR_RDS }}:latest
-          sudo docker-compose up -d backend_rds
+          # Визначаємо короткий хеш коміта
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+
+          # Оновлюємо docker-compose.yml за допомогою yq
+          yq eval ".services.backend_rds.image = \"${{ secrets.ECR_RDS }}:$SHORT_SHA\"" -i docker-compose.yml
+
+          # Копіюємо оновлений docker-compose.yml на віддалений сервер
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem docker-compose.yml ec2-user@${{ secrets.ELASTIC_IP }}:/home/ec2-user/docker-compose.yml
+
+          # Підключаємося до сервера і виконуємо деплой
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << EOF
+            sudo docker login --username AWS --password \$(aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }})
+            sudo docker pull ${{ secrets.ECR_RDS }}:$SHORT_SHA
+            sudo docker-compose -f /home/ec2-user/docker-compose.yml up -d backend_rds
           EOF
-
-
-
