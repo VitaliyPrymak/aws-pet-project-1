@@ -4,8 +4,6 @@ services:
     image: 084375565192.dkr.ecr.us-east-1.amazonaws.com/backend_rds:latest
     ports:
       - "8000:8000"
-    depends_on:
-      - db
     environment:
       - DB_HOST=${DATABASE_HOST}
       - DB_PORT=${DATABASE_PORT}
@@ -20,9 +18,6 @@ services:
     image: 084375565192.dkr.ecr.us-east-1.amazonaws.com/backend_redis:latest
     ports:
       - "4000:4000"
-
-    depends_on:
-      - redis
     environment:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
