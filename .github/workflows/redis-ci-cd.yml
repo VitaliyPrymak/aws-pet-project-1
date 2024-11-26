@@ -66,15 +66,14 @@ jobs:
 
           # Connect to the server and deploy
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << 'EOF'
-            set -e  # Exit immediately if a command exits with a non-zero status
+            set -e
             echo "Starting deployment on EC2..."
 
-            # Export the commit hash
             export SHORT_SHA=$SHORT_SHA
 
             # Authenticate with AWS ECR
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-              docker login --username AWS --password-stdin 084375565192.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+            aws ecr get-login-password --region us-east-1 | \
+              docker login --username AWS --password-stdin 084375565192.dkr.ecr.us-east-1.amazonaws.com
 
             # Pull the updated image
             docker pull ${{ secrets.ECR_REDIS }}:$SHORT_SHA
