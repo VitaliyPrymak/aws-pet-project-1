@@ -25,17 +25,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y awscli
+
       - name: Login to Amazon ECR
         id: login-ecr
         run: |
           aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | \
           docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+
       - name: Build and Push Docker Image
         run: |
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          echo "SHORT_SHA is: $SHORT_SHA"  # Debugging line to check if SHORT_SHA is correct
           docker build -t backend_redis:$SHORT_SHA -f backend_redis/Dockerfile backend_redis
           docker tag backend_redis:$SHORT_SHA ${{ secrets.ECR_REDIS }}:$SHORT_SHA
           docker push ${{ secrets.ECR_REDIS }}:$SHORT_SHA
+
       - name: Install SSH Client
         run: sudo apt-get update && sudo apt-get install -y openssh-client
 
@@ -46,29 +50,23 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PRIVATE_KEY" | tr -d '\r' > ~/.ssh/ec2_private_key.pem
           chmod 600 ~/.ssh/ec2_private_key.pem
+
       - name: Add Host Key to Known Hosts
         run: ssh-keyscan -H ${{ secrets.ELASTIC_IP }} >> ~/.ssh/known_hosts
 
       - name: Deploy Redis to EC2
         run: |
-          # Determine the short commit hash
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
-          # Update docker-compose.yml using yq
+          echo "SHORT_SHA is: $SHORT_SHA"  # Debugging to ensure correct value
           yq eval ".services.backend_redis.image = \"${{ secrets.ECR_REDIS }}:$SHORT_SHA\"" -i docker-compose.yml
-          # Copy updated docker-compose.yml to the remote server
           scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem docker-compose.yml ec2-user@${{ secrets.ELASTIC_IP }}:/home/ec2-user/docker-compose.yml
-          # Connect to the server and deploy
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << 'EOF'
-            set -e  # Exit immediately if a command exits with a non-zero status
+            set -e
             echo "Starting deployment on EC2..."
-            # Export the commit hash
             export SHORT_SHA=$SHORT_SHA
-            # Authenticate with AWS ECR
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
               docker login --username AWS --password-stdin 084375565192.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-            # Pull the updated image
             docker pull ${{ secrets.ECR_REDIS }}:$SHORT_SHA
-            # Deploy the updated image with Docker Compose
             docker-compose up -d backend_redis
             echo "Deployment completed successfully!"
           EOF
