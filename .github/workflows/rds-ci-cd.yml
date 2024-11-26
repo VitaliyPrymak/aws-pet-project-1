@@ -8,7 +8,8 @@ on:
       - "backend_rds/**"
 
 jobs:
-  deploy-rds-to-ECR:
+  # Job 1: Set up AWS credentials, build, and push Docker image for backend_rds
+  build-and-push-rds-to-ecr:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -35,9 +36,18 @@ jobs:
       - name: Build and Push Docker Image
         run: |
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          echo "SHORT_SHA is: $SHORT_SHA"  # Debugging line to check if SHORT_SHA is correct
           docker build -t backend_rds:$SHORT_SHA -f backend_rds/Dockerfile backend_rds
           docker tag backend_rds:$SHORT_SHA ${{ secrets.ECR_RDS }}:$SHORT_SHA
           docker push ${{ secrets.ECR_RDS }}:$SHORT_SHA
+
+  # Job 2: Update Docker Compose and deploy backend_rds to EC2
+  deploy-rds-to-ec2:
+    runs-on: ubuntu-latest
+    needs: build-and-push-rds-to-ecr  # This job depends on the successful completion of the 'build-and-push-rds-to-ecr' job
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Install SSH Client
         run: sudo apt-get update && sudo apt-get install -y openssh-client
@@ -55,19 +65,22 @@ jobs:
 
       - name: Update Docker Compose and Deploy
         run: |
-          # Визначаємо короткий хеш коміта
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
 
-          # Оновлюємо docker-compose.yml за допомогою yq
+          # Update docker-compose.yml using yq
           yq eval ".services.backend_rds.image = \"${{ secrets.ECR_RDS }}:$SHORT_SHA\"" -i docker-compose.yml
 
-          # Копіюємо оновлений docker-compose.yml на віддалений сервер
+          # Copy updated docker-compose.yml to the remote server
           scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem docker-compose.yml ec2-user@${{ secrets.ELASTIC_IP }}:/home/ec2-user/docker-compose.yml
 
-          # Підключаємося до сервера і виконуємо деплой
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << EOF
-             export SHORT_SHA=$SHORT_SHA
-             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin \084375565192.dkr.ecr.\${{ secrets.AWS_REGION }}.amazonaws.com
-             docker pull ${{ secrets.ECR_RDS }}:$SHORT_SHA
-             docker-compose up -d backend_rds
+          # Connect to the server and deploy
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << 'EOF'
+            set -e
+            echo "Starting deployment on EC2..."
+            export SHORT_SHA=$SHORT_SHA
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+              docker login --username AWS --password-stdin 084375565192.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+            docker pull ${{ secrets.ECR_RDS }}:$SHORT_SHA
+            docker-compose up -d backend_rds
+            echo "Deployment completed successfully!"
           EOF
