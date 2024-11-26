@@ -74,12 +74,12 @@ jobs:
 
             export SHORT_SHA=$SHORT_SHA
 
-            # Debugging: Log the image reference on the EC2 instance
-            echo "Pulling Image: ${{ secrets.ECR_REDIS }}:$SHORT_SHA"
+            # Ensure AWS region is set correctly
+            export AWS_REGION=${{ secrets.AWS_DEFAULT_REGION }}
 
             # Authenticate with AWS ECR
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-              docker login --username AWS --password-stdin 084375565192.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+            aws ecr get-login-password --region $AWS_REGION | \
+              docker login --username AWS --password-stdin 084375565192.dkr.ecr.${AWS_REGION}.amazonaws.com
 
             # Pull the updated image
             echo "Pulling image: ${{ secrets.ECR_REDIS }}:$SHORT_SHA"
