@@ -34,7 +34,7 @@ jobs:
         id: login-ecr
         run: |
           aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }} | \
-          docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+          docker login --username AWS --password-stdin ${{ secrets.ECR_REDIS }}
 
       # Step 5: Build and Push Docker Image
       - name: Build and Push Docker Image
@@ -69,10 +69,10 @@ jobs:
       - name: Add Host Key to Known Hosts
         run: ssh-keyscan -H ${{ secrets.ELASTIC_IP }} >> ~/.ssh/known_hosts
 
-      # Step 9: Deploy Redis to EC2
-      - name: Deploy Redis to EC2
+      # Step 9: Update Docker Compose and Deploy
+      - name: Update Docker Compose and Deploy
         run: |
-          # Generate a short commit hash
+          # Define the short commit hash
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
           echo "SHORT_SHA: $SHORT_SHA"
 
@@ -82,7 +82,7 @@ jobs:
           # Update docker-compose.yml using yq
           yq eval ".services.backend_redis.image = \"${{ secrets.ECR_REDIS }}:$SHORT_SHA\"" -i docker-compose.yml
 
-          # Copy updated docker-compose.yml to the remote server
+          # Copy the updated docker-compose.yml to the remote server
           scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem docker-compose.yml ec2-user@${{ secrets.ELASTIC_IP }}:/home/ec2-user/docker-compose.yml
 
           # Connect to the EC2 instance and deploy the Docker image
