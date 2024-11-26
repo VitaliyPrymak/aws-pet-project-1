@@ -34,9 +34,10 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          docker build -t backend_redis:latest -f backend_redis/Dockerfile backend_redis
-          docker tag backend_redis:latest ${{ secrets.ECR_REDIS }}:latest
-          docker push ${{ secrets.ECR_REDIS }}:latest
+         SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          docker build -t backend_redis:$SHORT_SHA -f backend_redis/Dockerfile backend_redis
+          docker tag backend_redis:$SHORT_SHA ${{ secrets.ECR_REDIS }}:$SHORT_SHA
+          docker push ${{ secrets.ECR_REDIS }}:$SHORT_SHA
 
       - name: Install SSH Client
         run: sudo apt-get update && sudo apt-get install -y openssh-client
@@ -54,11 +55,21 @@ jobs:
 
       - name: Deploy Redis to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << 'EOF'
-          sudo docker login --username AWS --password $(aws ecr get-login-password --region ${{ secrets.AWS_DEFAULT_REGION }})
-          sudo docker pull ${{ secrets.ECR_REDIS }}:latest
-          sudo docker-compose up -d backend_redis
-          EOF
+         # Визначаємо короткий хеш коміта
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
 
+          # Оновлюємо docker-compose.yml за допомогою yq
+          yq eval ".services.backend_redis.image = \"${{ secrets.ECR_REDIS }}:$SHORT_SHA\"" -i docker-compose.yml
+
+          # Копіюємо оновлений docker-compose.yml на віддалений сервер
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem docker-compose.yml ec2-user@${{ secrets.ELASTIC_IP }}:/home/ec2-user/docker-compose.yml
+
+          # Підключаємося до сервера і виконуємо деплой
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << EOF
+             export SHORT_SHA=$SHORT_SHA
+             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin \084375565192.dkr.ecr.\${{ secrets.AWS_REGION }}.amazonaws.com
+             docker pull ${{ secrets.ECR_REDIS }}:$SHORT_SHA
+             docker-compose up -d backend_redis
+          EOF
 
 
