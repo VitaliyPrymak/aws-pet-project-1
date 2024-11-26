@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'backend_redis/**'
+      - "backend_redis/**"
 
 jobs:
   deploy-redis-to-ECR:
@@ -34,7 +34,7 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-         SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
           docker build -t backend_redis:$SHORT_SHA -f backend_redis/Dockerfile backend_redis
           docker tag backend_redis:$SHORT_SHA ${{ secrets.ECR_REDIS }}:$SHORT_SHA
           docker push ${{ secrets.ECR_REDIS }}:$SHORT_SHA
@@ -55,21 +55,32 @@ jobs:
 
       - name: Deploy Redis to EC2
         run: |
-         # Визначаємо короткий хеш коміта
+          # Determine the short commit hash
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
 
-          # Оновлюємо docker-compose.yml за допомогою yq
+          # Update docker-compose.yml using yq
           yq eval ".services.backend_redis.image = \"${{ secrets.ECR_REDIS }}:$SHORT_SHA\"" -i docker-compose.yml
 
-          # Копіюємо оновлений docker-compose.yml на віддалений сервер
+          # Copy updated docker-compose.yml to the remote server
           scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem docker-compose.yml ec2-user@${{ secrets.ELASTIC_IP }}:/home/ec2-user/docker-compose.yml
 
-          # Підключаємося до сервера і виконуємо деплой
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << EOF
-             export SHORT_SHA=$SHORT_SHA
-             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin \084375565192.dkr.ecr.\${{ secrets.AWS_REGION }}.amazonaws.com
-             docker pull ${{ secrets.ECR_REDIS }}:$SHORT_SHA
-             docker-compose up -d backend_redis
+          # Connect to the server and deploy
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << 'EOF'
+            set -e  # Exit immediately if a command exits with a non-zero status
+            echo "Starting deployment on EC2..."
+
+            # Export the commit hash
+            export SHORT_SHA=$SHORT_SHA
+
+            # Authenticate with AWS ECR
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
+              docker login --username AWS --password-stdin 084375565192.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+            # Pull the updated image
+            docker pull ${{ secrets.ECR_REDIS }}:$SHORT_SHA
+
+            # Deploy the updated image with Docker Compose
+            docker-compose up -d backend_redis
+
+            echo "Deployment completed successfully!"
           EOF
-
-
