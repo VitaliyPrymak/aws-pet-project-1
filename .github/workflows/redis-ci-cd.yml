@@ -35,6 +35,7 @@ jobs:
       - name: Build and Push Docker Image
         run: |
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          echo "Building and pushing backend_redis:$SHORT_SHA"
           docker build -t backend_redis:$SHORT_SHA -f backend_redis/Dockerfile backend_redis
           docker tag backend_redis:$SHORT_SHA ${{ secrets.ECR_REDIS }}:$SHORT_SHA
           docker push ${{ secrets.ECR_REDIS }}:$SHORT_SHA
@@ -60,6 +61,7 @@ jobs:
 
           # Debugging: Log the image reference
           echo "Pulling Image: ${{ secrets.ECR_REDIS }}:$SHORT_SHA"
+          echo "ECR_REDIS: ${{ secrets.ECR_REDIS }}"
 
           # Update docker-compose.yml using yq
           yq eval ".services.backend_redis.image = \"${{ secrets.ECR_REDIS }}:$SHORT_SHA\"" -i docker-compose.yml
@@ -76,6 +78,9 @@ jobs:
 
             # Ensure AWS region is set correctly
             export AWS_REGION=${{ secrets.AWS_DEFAULT_REGION }}
+
+            # Debugging: Check the region
+            echo "AWS Region: $AWS_REGION"
 
             # Authenticate with AWS ECR
             aws ecr get-login-password --region $AWS_REGION | \
