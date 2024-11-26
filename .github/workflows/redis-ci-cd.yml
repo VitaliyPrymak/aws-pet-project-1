@@ -65,22 +65,19 @@ jobs:
 
       - name: Update Docker Compose and Deploy
         run: |
+          # Визначаємо короткий хеш коміта
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
 
-          # Update docker-compose.yml using yq
+          # Оновлюємо docker-compose.yml за допомогою yq
           yq eval ".services.backend_redis.image = \"${{ secrets.ECR_REDIS }}:$SHORT_SHA\"" -i docker-compose.yml
 
-          # Copy updated docker-compose.yml to remote server
+          # Копіюємо оновлений docker-compose.yml на віддалений сервер
           scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem docker-compose.yml ec2-user@${{ secrets.ELASTIC_IP }}:/home/ec2-user/docker-compose.yml
 
-          # Connect to EC2 and deploy
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << 'EOF'
-            set -e
-            echo "Starting deployment on EC2..."
-            export SHORT_SHA=$SHORT_SHA
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
-              docker login --username AWS --password-stdin 084375565192.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-            docker pull ${{ secrets.ECR_REDIS }}:$SHORT_SHA
-            docker-compose up -d backend_redis
-            echo "Deployment completed successfully!"
+          # Підключаємося до сервера і виконуємо деплой
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_private_key.pem ec2-user@${{ secrets.ELASTIC_IP }} << EOF
+             export SHORT_SHA=$SHORT_SHA
+             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin \084375565192.dkr.ecr.\${{ secrets.AWS_REGION }}.amazonaws.com
+             docker pull ${{ secrets.ECR_REDIS }}:$SHORT_SHA
+             docker-compose up -d backend_redis
           EOF
